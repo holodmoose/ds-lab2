@@ -1,0 +1,30 @@
+GET http://127.0.0.1:8080/flights HTTP/1.1
+
+
+###
+
+GET http://127.0.0.1:8080/tickets HTTP/1.1
+X-user-name: moose
+
+
+###
+
+GET http://127.0.0.1:8080/me HTTP/1.1
+X-user-name: moose
+
+###
+
+GET http://127.0.0.1:8080/tickets HTTP/1.1
+X-user-name: moose1
+
+
+###
+
+GET http://127.0.0.1:8080/me HTTP/1.1
+X-user-name: moose1
+
+###
+
+GET http://127.0.0.1:8080/privelege HTTP/1.1
+X-user-name: moose
+
