@@ -25,6 +25,6 @@ X-user-name: moose1
 
 ###
 
-GET http://127.0.0.1:8080/privelege HTTP/1.1
+GET http://127.0.0.1:8080/privilege HTTP/1.1
 X-user-name: moose
 

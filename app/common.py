@@ -10,7 +10,7 @@ from enum import Enum
 
 class Ticket(BaseModel):
     id: int
-    ticket_uuid: str
+    ticket_uid: uuid.UUID
     username: str
     flight_number: str
     price: int
@@ -55,7 +55,7 @@ class Privilege(BaseModel):
 class PrivilegeHistory(BaseModel):
     id: int
     privilege_id: int
-    ticket_uid: str
+    ticket_uid: uuid.UUID
     datetime: datetime
     balance_diff: int
     operation_type: str
@@ -81,7 +81,6 @@ class PrivilegeStatus(str, Enum):
 class OperationType(str, Enum):
     FILL_IN_BALANCE = "FILL_IN_BALANCE"
     DEBIT_THE_ACCOUNT = "DEBIT_THE_ACCOUNT"
-    FILLED_BY_MONEY = "FILLED_BY_MONEY"
 
 
 # -------------------- CORE MODELS --------------------
@@ -91,8 +90,11 @@ class FlightResponse(BaseModel):
     flightNumber: str = Field(..., description="Номер полета")
     fromAirport: str = Field(..., description="Страна и аэропорт отправления")
     toAirport: str = Field(..., description="Страна и аэропорт прибытия")
-    date: str = Field(..., description="Дата и время вылета (ISO 8601 формат)")
+    date: datetime = Field(..., description="Дата и время вылета (ISO 8601 формат)")
     price: int = Field(..., description="Стоимость")
+
+    class Config:
+        orm_mode = True
 
 
 class PaginationResponse(BaseModel):
@@ -101,27 +103,39 @@ class PaginationResponse(BaseModel):
     totalElements: int = Field(..., description="Общее количество элементов")
     items: List[FlightResponse] = Field(..., description="Список рейсов")
 
+    class Config:
+        orm_mode = True
+
 
 class TicketResponse(BaseModel):
-    ticketUid: str = Field(..., description="UUID билета")
+    ticketUid: uuid.UUID = Field(..., description="UUID билета")
     flightNumber: str = Field(..., description="Номер полета")
     fromAirport: str = Field(..., description="Страна и аэропорт отправления")
     toAirport: str = Field(..., description="Страна и аэропорт прибытия")
-    date: str = Field(..., description="Дата и время вылета (ISO 8601 формат)")
+    date: datetime = Field(..., description="Дата и время вылета (ISO 8601 формат)")
     price: int = Field(..., description="Стоимость")
     status: TicketStatus = Field(..., description="Статус билета")
+
+    class Config:
+        orm_mode = True
 
 
 class PrivilegeShortInfo(BaseModel):
     balance: int = Field(..., description="Баланс бонусного счета")
     status: PrivilegeStatus = Field(..., description="Статус в бонусной программе")
 
+    class Config:
+        orm_mode = True
+
 
 class BalanceHistory(BaseModel):
     date: datetime = Field(..., description="Дата и время операции (ISO 8601)")
-    ticketUid: str = Field(..., description="UUID билета по которому была операция")
+    ticketUid: uuid.UUID = Field(..., description="UUID билета по которому была операция")
     balanceDiff: int = Field(..., description="Изменение баланса")
     operationType: OperationType = Field(..., description="Тип операции")
+
+    class Config:
+        orm_mode = True
 
 
 class PrivilegeInfoResponse(BaseModel):
@@ -148,11 +162,11 @@ class TicketPurchaseRequest(BaseModel):
 
 
 class TicketPurchaseResponse(BaseModel):
-    ticketUid: str = Field(..., description="UUID билета")
+    ticketUid: uuid.UUID = Field(..., description="UUID билета")
     flightNumber: str = Field(..., description="Номер полета")
     fromAirport: str = Field(..., description="Страна и аэропорт отправления")
     toAirport: str = Field(..., description="Страна и аэропорт прибытия")
-    date: str = Field(..., description="Дата и время вылета (ISO 8601 формат)")
+    date: datetime = Field(..., description="Дата и время вылета (ISO 8601 формат)")
     price: int = Field(..., description="Стоимость")
     paidByMoney: int = Field(..., description="Сумма оплаченная деньгами")
     paidByBonuses: int = Field(..., description="Сумма оплаченная бонусами")
@@ -186,3 +200,11 @@ class TicketCreateRequest(BaseModel):
     username: str = Field(..., description="Имя пользователя")
     flightNumber: str = Field(..., description="Номер рейса")
     price: int = Field(..., description="Стоимость билета")
+
+
+class AddTranscationRequest(BaseModel):
+    privilege_id: int
+    ticket_uid: uuid.UUID
+    datetime: datetime
+    balance_diff: int
+    operation_type: str

@@ -39,49 +39,45 @@ def get_db():
         db.close()
 
 
-class Ticket(Base):
+class TicketDb(Base):
     __tablename__ = "ticket"
 
     id = Column(Integer, primary_key=True)
-    ticket_uid = Column(
-        UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4
-    )
+    ticket_uid = Column(UUID(as_uuid=True), nullable=False)
     username = Column(String(80), nullable=False)
     flight_number = Column(String(20), nullable=False)
     price = Column(Integer, nullable=False)
     status = Column(String(20), nullable=False)
 
-    __table_args__ = (
-        CheckConstraint("status IN ('PAID', 'CANCELED')", name="ticket_status_check"),
-    )
 
-
-@app.get("/tickets/{username}", response_model=List[TicketResponse])
+@app.get("/tickets/user/{username}", response_model=List[Ticket])
 def get_tickets_by_user(username: str, db: Session = Depends(get_db)):
-    tickets = db.query(Ticket).filter(Ticket.username == username).all()
+    tickets = db.query(TicketDb).filter(TicketDb.username == username).all()
     return tickets
 
 
-@app.get("/tickets/{ticket_uid}", response_model=TicketResponse)
+@app.get("/tickets/{ticket_uid}", response_model=Ticket)
 def get_ticket_by_uid(
     ticket_uid: uuid.UUID = Path(..., description="UUID билета"),
     db: Session = Depends(get_db),
 ):
-    ticket = db.query(Ticket).filter(Ticket.ticket_uid == ticket_uid).first()
+    ticket = db.query(TicketDb).filter(TicketDb.ticket_uid == ticket_uid).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
 
 
-@app.post("/tickets", response_model=TicketResponse, status_code=201)
+@app.post("/tickets", status_code=201)
 def create_ticket(request: TicketCreateRequest, db: Session = Depends(get_db)):
-    existing = db.query(Ticket).filter(Ticket.ticket_uid == request.ticketUid).first()
+    existing = (
+        db.query(TicketDb).filter(TicketDb.ticket_uid == request.ticketUid).first()
+    )
     if existing:
         raise HTTPException(
             status_code=400, detail="Ticket with this UUID already exists"
         )
 
-    new_ticket = Ticket(
+    new_ticket = TicketDb(
         ticket_uid=request.ticketUid,
         username=request.username,
         flight_number=request.flightNumber,
@@ -90,19 +86,16 @@ def create_ticket(request: TicketCreateRequest, db: Session = Depends(get_db)):
     )
     db.add(new_ticket)
     db.commit()
-    db.refresh(new_ticket)
-    return new_ticket
 
 
 @app.delete("/tickets/{ticket_uid}", status_code=204)
 def delete_ticket(ticket_uid: uuid.UUID, db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.ticket_uid == ticket_uid).first()
+    ticket = db.query(TicketDb).filter(TicketDb.ticket_uid == ticket_uid).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     db.delete(ticket)
     db.commit()
-    return None
 
 
 @app.get("/manage/health", status_code=201)

@@ -135,10 +135,10 @@ def get_specific_history_entry(
         raise HTTPException(status_code=404, detail="Privilege not found for this user")
 
     history_entry = (
-        db.query(PrivilegeHistory)
+        db.query(PrivilegeHistoryDb)
         .filter(
-            PrivilegeHistory.privilege_id == privilege.id,
-            PrivilegeHistory.ticket_uid == ticket_uid,
+            PrivilegeHistoryDb.privilege_id == privilege.id,
+            PrivilegeHistoryDb.ticket_uid == ticket_uid,
         )
         .first()
     )
@@ -147,6 +147,63 @@ def get_specific_history_entry(
         raise HTTPException(status_code=404, detail="History entry not found")
 
     return history_entry
+
+
+@app.post("/privilege/{username}/history")
+def add_transaction(
+    username, data: AddTranscationRequest, db: Session = Depends(get_db)
+):
+    priv = db.query(PrivilegeDb).filter(PrivilegeDb.username == username).first()
+    if not priv:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if data.operation_type == "FILL_IN_BALANCE":
+        priv.balance += data.balance_diff
+    else:
+        if priv.balance < data.balance_diff:
+            raise HTTPException(status_code=409, detail="Can't decrease balance")
+        priv.balance -= data.balance_diff
+
+    hist = PrivilegeHistoryDb(
+        privilege_id=priv.id,
+        ticket_uid=data.ticket_uid,
+        datetime=data.datetime,
+        balance_diff=data.balance_diff,
+        operation_type=data.operation_type,
+    )
+    db.add(hist)
+
+    db.commit()
+    db.refresh(priv)
+
+
+@app.delete("/privilege/{username}/history/{ticket_uid}")
+def rollback_transaction(username, ticket_uid, db: Session = Depends(get_db)):
+    priv = db.query(PrivilegeDb).filter(PrivilegeDb.username == username).first()
+    if not priv:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    transaction = (
+        db.query(PrivilegeHistoryDb)
+        .filter(
+            PrivilegeHistoryDb.privilege_id == priv.id,
+            PrivilegeHistoryDb.ticket_uid == ticket_uid,
+        )
+        .first()
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    cur_balance = priv.balance
+    if transaction.operation_type == "FILL_IN_BALANCE":
+        new_balance = max(cur_balance - transaction.balance_diff, 0)
+    else:
+        new_balance = cur_balance + transaction.balance_diff
+    print(priv.balance, new_balance)
+    priv.balance = new_balance
+    db.delete(transaction)
+    db.commit()
+    db.refresh(priv)
 
 
 @app.get("/manage/health", status_code=201)

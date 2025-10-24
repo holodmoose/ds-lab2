@@ -27,7 +27,7 @@ if PRIVILEGES_SERVICE_URL is None:
 
 flights_service = FlightsService(FLIGHTS_SERVICE_URL)
 tickets_service = TicketsService(TICKETS_SERVICE_URL)
-privliges_service = PrivilegesService(PRIVILEGES_SERVICE_URL)
+privileges_service = PrivilegesService(PRIVILEGES_SERVICE_URL)
 
 
 # FastAPI app
@@ -51,20 +51,40 @@ def get_flights(page: int = None, size: int = None):
     return flights_service.get_all(page, size)
 
 
+def map_ticket_to_ticket_response(tick):
+    flight = flights_service.get_flight_by_number(tick.flight_number)
+    return TicketResponse(
+        ticketUid=tick.ticket_uid,
+        flightNumber=tick.flight_number,
+        fromAirport=flight.fromAirport,
+        toAirport=flight.toAirport,
+        date=flight.date,
+        price=flight.price,
+        status=tick.status,
+    )
+
+
 @app.get("/tickets")
 def get_tickets(x_user_name: str = Header()) -> List[TicketResponse]:
-    privilege = privliges_service.get_user_privelge(x_user_name)
+    privilege = privileges_service.get_user_privelge(x_user_name)
     if privilege is None:
         return error_response("Пользователь не найден", 404)
-    return tickets_service.get_user_tickets(x_user_name)
+    tickets_info = tickets_service.get_user_tickets(x_user_name)
+    tickets = []
+    for tick in tickets_info:
+        tickets.append(map_ticket_to_ticket_response(tick))
+    return tickets
 
 
 @app.get("/me")
 def get_user(x_user_name: str = Header()) -> UserInfoResponse | ErrorResponse:
-    privilege = privliges_service.get_user_privelge(x_user_name)
+    privilege = privileges_service.get_user_privelge(x_user_name)
     if privilege is None:
         return error_response("Пользователь не найден", 404)
-    tickets = tickets_service.get_user_tickets(x_user_name)
+    tickets_info = tickets_service.get_user_tickets(x_user_name)
+    tickets = []
+    for tick in tickets_info:
+        tickets.append(map_ticket_to_ticket_response(tick))
     return UserInfoResponse(
         tickets=tickets,
         privilege=PrivilegeShortInfo(
@@ -106,10 +126,11 @@ def buy_ticket(
     if flight is None:
         return ValidationErrorResponse(message="Ошибка валидации данных")
 
-    priv = privliges_service.get_user_privelge(x_user_name)
+    priv = privileges_service.get_user_privelge(x_user_name)
     if priv is None:
         return ValidationErrorResponse(message="Пользователь не существует")
 
+    now = datetime.now()
     ticket_uid = uuid.uuid4()
 
     paid_by_money = flight.price
@@ -118,30 +139,44 @@ def buy_ticket(
         money = min(priv.balance, flight.price)
         paid_by_bonus = money
         paid_by_money = flight.price - paid_by_bonus
-        privliges_service.pay_with_bonus(
-            body.flightNumber, ticket_uid, priv.id, paid_by_bonus
-        )
+        if paid_by_bonus:
+            privileges_service.add_transaction(
+                x_user_name,
+                AddTranscationRequest(
+                    privilege_id=priv.id,
+                    ticket_uid=ticket_uid,
+                    datetime=now,
+                    balance_diff=paid_by_bonus,
+                    operation_type="DEBIT_THE_ACCOUNT",
+                ),
+            )
     else:
-        privliges_service.add_bonus(
-            body.flightNumber, ticket_uid, priv.id, paid_by_money // 10
+        privileges_service.add_transaction(
+            x_user_name,
+            AddTranscationRequest(
+                privilege_id=priv.id,
+                ticket_uid=ticket_uid,
+                datetime=now,
+                balance_diff=paid_by_money // 10,
+                operation_type="FILL_IN_BALANCE",
+            ),
         )
 
-    now = datetime.datetime.now()
-    priv = privliges_service.get_user_privelge(x_user_name)
+    priv = privileges_service.get_user_privelge(x_user_name)
     tickets_service.create_ticket(
         ticket_uid, x_user_name, flight.flightNumber, paid_by_money
     )
     return TicketPurchaseResponse(
-        ticket_uid,
-        body.flightNumber,
-        flight.fromAirport,
-        flight.toAirport,
-        now,
-        flight.price,
-        paid_by_money,
-        paid_by_bonus,
-        "PAID",
-        PrivilegeShortInfo(balance=priv.balance, status=priv.status),
+        ticketUid=ticket_uid,
+        flightNumber=body.flightNumber,
+        fromAirport=flight.fromAirport,
+        toAirport=flight.toAirport,
+        date=now,
+        price=flight.price,
+        paidByMoney=paid_by_money,
+        paidByBonuses=paid_by_bonus,
+        status="PAID",
+        privilege=PrivilegeShortInfo(balance=priv.balance, status=priv.status),
     )
 
 
@@ -154,12 +189,14 @@ def return_ticket(ticket_uid, x_user_name: str = Header()) -> None | ErrorRespon
         return ErrorResponse(message="Билет не принадлежит пользователю")
     if ticket.status != "PAID":
         return ErrorResponse(message="Билет не может быть отменен")
-    privliges_service.rollback_transaction(x_user_name, ticket_uid)
+    if privileges_service.get_user_privelge_transaction(x_user_name, ticket_uid):
+        print("here")
+        privileges_service.rollback_transaction(x_user_name, ticket_uid)
     tickets_service.delete_ticket(ticket_uid)
 
 
 @app.get("/privilege")
 def get_privilege(x_user_name: str = Header()) -> PrivilegeInfoResponse:
-    a = privliges_service.get_user_privelge(x_user_name)
-    b = privliges_service.get_user_privelge_history(x_user_name)
+    a = privileges_service.get_user_privelge(x_user_name)
+    b = privileges_service.get_user_privelge_history(x_user_name)
     return PrivilegeInfoResponse(balance=a.balance, status=a.status, history=b)

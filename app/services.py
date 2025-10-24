@@ -18,9 +18,7 @@ class FlightsService:
         return PaginationResponse.model_validate(response.json())
 
     def get_flight_by_number(self, flight_number: str) -> FlightResponse:
-        response = requests.get(
-            f"{self.url}/flights/{flight_number}",
-        )
+        response = requests.get(f"{self.url}/flights/{flight_number}")
         response.raise_for_status()
         return FlightResponse.model_validate(response.json())
 
@@ -34,7 +32,7 @@ class TicketsService:
         response.raise_for_status()
 
     def get_user_tickets(self, username) -> list[Ticket]:
-        response = requests.get(f"{self.url}/tickets/{username}")
+        response = requests.get(f"{self.url}/tickets/user/{username}")
         response.raise_for_status()
         return [Ticket.model_validate(x) for x in response.json()]
 
@@ -52,7 +50,12 @@ class TicketsService:
     def create_ticket(self, ticket_uid, username, flight_number, price):
         response = requests.post(
             f"{self.url}/tickets",
-            json=TicketCreateRequest(ticket_uid, username, flight_number, price),
+            json=TicketCreateRequest(
+                ticketUid=ticket_uid,
+                username=username,
+                flightNumber=flight_number,
+                price=price,
+            ).model_dump(mode="json"),
         )
         response.raise_for_status()
 
@@ -80,5 +83,19 @@ class PrivilegesService:
 
     def get_user_privelge_transaction(self, username, ticket_uid) -> PrivilegeHistory:
         response = requests.get(f"{self.url}/privilege/{username}/history/{ticket_uid}")
+        if response.status_code == 404:
+            return None
         response.raise_for_status()
         return PrivilegeHistory.model_validate(response.json())
+
+    def add_transaction(self, username, data: AddTranscationRequest):
+        response = requests.post(
+            f"{self.url}/privilege/{username}/history", json=data.model_dump(mode="json")
+        )
+        response.raise_for_status()
+
+    def rollback_transaction(self, username, ticket_uid):
+        response = requests.delete(
+            f"{self.url}/privilege/{username}/history/{ticket_uid}"
+        )
+        response.raise_for_status()

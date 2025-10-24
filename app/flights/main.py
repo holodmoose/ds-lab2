@@ -61,7 +61,7 @@ class Flight(Base):
 
     id = Column(Integer, primary_key=True)
     flight_number = Column(String(20), nullable=False)
-    datetime = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    datetime = Column(TIMESTAMP(timezone=True))
     from_airport_id = Column(Integer, ForeignKey("airport.id"))
     to_airport_id = Column(Integer, ForeignKey("airport.id"))
     price = Column(Integer, nullable=False)
@@ -113,13 +113,7 @@ def get_all_flights(
 
 @app.get("/flights/{flight_number}", response_model=FlightResponse)
 def get_flight_by_number(flight_number: str, db: Session = Depends(get_db)):
-    flight = (
-        db.query(Flight)
-        .join(Flight.from_airport)
-        .join(Flight.to_airport)
-        .filter(Flight.flight_number == flight_number)
-        .first()
-    )
+    flight = db.query(Flight).filter(Flight.flight_number == flight_number).first()
 
     if not flight:
         raise HTTPException(status_code=404, detail="Flight not found")
