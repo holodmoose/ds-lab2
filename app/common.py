@@ -2,7 +2,7 @@ import uuid
 from pydantic import BaseModel
 from typing import List
 import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 from datetime import datetime
 from enum import Enum
@@ -16,8 +16,7 @@ class Ticket(BaseModel):
     price: int
     status: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Flight(BaseModel):
@@ -28,8 +27,7 @@ class Flight(BaseModel):
     to_airport_id: int
     price: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Airport(BaseModel):
@@ -38,8 +36,7 @@ class Airport(BaseModel):
     city: str
     country: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Privilege(BaseModel):
@@ -48,8 +45,7 @@ class Privilege(BaseModel):
     status: str
     balance: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PrivilegeHistory(BaseModel):
@@ -60,8 +56,7 @@ class PrivilegeHistory(BaseModel):
     balance_diff: int
     operation_type: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # -------------------- ENUMS --------------------
@@ -93,8 +88,7 @@ class FlightResponse(BaseModel):
     date: datetime = Field(..., description="Дата и время вылета (ISO 8601 формат)")
     price: int = Field(..., description="Стоимость")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginationResponse(BaseModel):
@@ -103,8 +97,7 @@ class PaginationResponse(BaseModel):
     totalElements: int = Field(..., description="Общее количество элементов")
     items: List[FlightResponse] = Field(..., description="Список рейсов")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TicketResponse(BaseModel):
@@ -116,26 +109,25 @@ class TicketResponse(BaseModel):
     price: int = Field(..., description="Стоимость")
     status: TicketStatus = Field(..., description="Статус билета")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PrivilegeShortInfo(BaseModel):
     balance: int = Field(..., description="Баланс бонусного счета")
     status: PrivilegeStatus = Field(..., description="Статус в бонусной программе")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BalanceHistory(BaseModel):
     date: datetime = Field(..., description="Дата и время операции (ISO 8601)")
-    ticketUid: uuid.UUID = Field(..., description="UUID билета по которому была операция")
+    ticketUid: uuid.UUID = Field(
+        ..., description="UUID билета по которому была операция"
+    )
     balanceDiff: int = Field(..., description="Изменение баланса")
     operationType: OperationType = Field(..., description="Тип операции")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PrivilegeInfoResponse(BaseModel):

@@ -3,7 +3,7 @@ import sys
 from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP, StaticPool
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 import os
@@ -14,19 +14,31 @@ sys.path.insert(0, parentdir)
 
 from common import *
 
-# Database configuration from environment variables
-DB_USER = os.getenv("POSTGRES_USER", "postgres")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-DB_NAME = os.getenv("POSTGRES_DB", "postgres")
-DB_HOST = os.getenv("DB_HOST", "postgres")
-DB_PORT = os.getenv("DB_PORT", "5432")
+if not os.getenv("TESTING"):
+    # Database configuration from environment variables
+    DB_USER = os.getenv("POSTGRES_USER", "postgres")
+    DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+    DB_NAME = os.getenv("POSTGRES_DB", "postgres")
+    DB_HOST = os.getenv("DB_HOST", "postgres")
+    DB_PORT = os.getenv("DB_PORT", "5432")
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+    # SQLAlchemy setup
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base = declarative_base()
+else:
+    # For tests, create minimal setup
+    Base = declarative_base()
+
+    SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
 app = FastAPI(title="Flight API")
 
@@ -39,7 +51,7 @@ def get_db():
         db.close()
 
 
-class Airport(Base):
+class AirportDb(Base):
     __tablename__ = "airport"
 
     id = Column(Integer, primary_key=True)
@@ -49,14 +61,16 @@ class Airport(Base):
 
     # Relationships
     departures = relationship(
-        "Flight", back_populates="from_airport", foreign_keys="Flight.from_airport_id"
+        "FlightDb",
+        back_populates="from_airport",
+        foreign_keys="FlightDb.from_airport_id",
     )
     arrivals = relationship(
-        "Flight", back_populates="to_airport", foreign_keys="Flight.to_airport_id"
+        "FlightDb", back_populates="to_airport", foreign_keys="FlightDb.to_airport_id"
     )
 
 
-class Flight(Base):
+class FlightDb(Base):
     __tablename__ = "flight"
 
     id = Column(Integer, primary_key=True)
@@ -68,16 +82,16 @@ class Flight(Base):
 
     # Relationships
     from_airport = relationship(
-        "Airport", foreign_keys=[from_airport_id], back_populates="departures"
+        "AirportDb", foreign_keys=[from_airport_id], back_populates="departures"
     )
     to_airport = relationship(
-        "Airport", foreign_keys=[to_airport_id], back_populates="arrivals"
+        "AirportDb", foreign_keys=[to_airport_id], back_populates="arrivals"
     )
 
 
-def flight_to_response(flight: Flight) -> FlightResponse:
-    from_airport = f"{flight.from_airport.country}, {flight.from_airport.name}"
-    to_airport = f"{flight.to_airport.country}, {flight.to_airport.name}"
+def flight_to_response(flight: FlightDb) -> FlightResponse:
+    from_airport = f"{flight.from_airport.city} {flight.from_airport.name}"
+    to_airport = f"{flight.to_airport.city} {flight.to_airport.name}"
 
     return FlightResponse(
         flightNumber=flight.flight_number,
@@ -98,8 +112,8 @@ def get_all_flights(
 ):
     offset = (page - 1) * page_size
 
-    total = db.query(Flight).count()
-    flights = db.query(Flight).offset(offset).limit(page_size).all()
+    total = db.query(FlightDb).count()
+    flights = db.query(FlightDb).offset(offset).limit(page_size).all()
 
     response_items = [flight_to_response(f) for f in flights]
 
@@ -113,7 +127,7 @@ def get_all_flights(
 
 @app.get("/flights/{flight_number}", response_model=FlightResponse)
 def get_flight_by_number(flight_number: str, db: Session = Depends(get_db)):
-    flight = db.query(Flight).filter(Flight.flight_number == flight_number).first()
+    flight = db.query(FlightDb).filter(FlightDb.flight_number == flight_number).first()
 
     if not flight:
         raise HTTPException(status_code=404, detail="Flight not found")

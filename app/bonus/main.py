@@ -6,6 +6,7 @@ from sqlalchemy import (
     TIMESTAMP,
     CheckConstraint,
     ForeignKey,
+    StaticPool,
     create_engine,
     Column,
     Integer,
@@ -24,19 +25,31 @@ sys.path.insert(0, parentdir)
 
 from common import *
 
-# Database configuration from environment variables
-DB_USER = os.getenv("POSTGRES_USER", "postgres")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-DB_NAME = os.getenv("POSTGRES_DB", "postgres")
-DB_HOST = os.getenv("DB_HOST", "postgres")
-DB_PORT = os.getenv("DB_PORT", "5432")
+if not os.getenv("TESTING"):
+    # Database configuration from environment variables
+    DB_USER = os.getenv("POSTGRES_USER", "postgres")
+    DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+    DB_NAME = os.getenv("POSTGRES_DB", "postgres")
+    DB_HOST = os.getenv("DB_HOST", "postgres")
+    DB_PORT = os.getenv("DB_PORT", "5432")
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+    # SQLAlchemy setup
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base = declarative_base()
+else:
+    # For tests, create minimal setup
+    Base = declarative_base()
+
+    SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
 app = FastAPI(title="Bonus API")
 
@@ -66,7 +79,7 @@ class PrivilegeHistoryDb(Base):
     id = Column(Integer, primary_key=True)
     privilege_id = Column(Integer, ForeignKey("privilege.id"))
     ticket_uid = Column(UUID(as_uuid=True), nullable=False)
-    datetime = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    datetime = Column(TIMESTAMP, nullable=False)
     balance_diff = Column(Integer, nullable=False)
     operation_type = Column(String(20), nullable=False)
 
@@ -80,15 +93,9 @@ class PrivilegeHistoryDb(Base):
     privilege = relationship("PrivilegeDb", back_populates="history")
 
 
-# --------------------- #
-# FastAPI App
-# --------------------- #
 app = FastAPI(title="Privilege Service", version="1.0")
 
 
-# --------------------- #
-# Dependency
-# --------------------- #
 def get_db():
     db = SessionLocal()
     try:
@@ -149,7 +156,7 @@ def get_specific_history_entry(
     return history_entry
 
 
-@app.post("/privilege/{username}/history")
+@app.post("/privilege/{username}/history", status_code=201)
 def add_transaction(
     username, data: AddTranscationRequest, db: Session = Depends(get_db)
 ):
@@ -177,8 +184,8 @@ def add_transaction(
     db.refresh(priv)
 
 
-@app.delete("/privilege/{username}/history/{ticket_uid}")
-def rollback_transaction(username, ticket_uid, db: Session = Depends(get_db)):
+@app.delete("/privilege/{username}/history/{ticket_uid}", status_code=204)
+def rollback_transaction(username, ticket_uid: uuid.UUID, db: Session = Depends(get_db)):
     priv = db.query(PrivilegeDb).filter(PrivilegeDb.username == username).first()
     if not priv:
         raise HTTPException(status_code=404, detail="User not found")
@@ -199,7 +206,6 @@ def rollback_transaction(username, ticket_uid, db: Session = Depends(get_db)):
         new_balance = max(cur_balance - transaction.balance_diff, 0)
     else:
         new_balance = cur_balance + transaction.balance_diff
-    print(priv.balance, new_balance)
     priv.balance = new_balance
     db.delete(transaction)
     db.commit()

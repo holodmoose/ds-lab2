@@ -95,7 +95,7 @@ def get_user(x_user_name: str = Header()) -> UserInfoResponse | ErrorResponse:
 
 @app.get("/tickets/{ticket_uid}")
 def get_ticket(
-    ticket_uid: int, x_user_name: str = Header()
+    ticket_uid: uuid.UUID, x_user_name: str = Header()
 ) -> TicketResponse | ErrorResponse:
     ticket = tickets_service.get_ticket(ticket_uid)
     if ticket is None:
@@ -107,7 +107,7 @@ def get_ticket(
         return error_response("Перелет не найден", 404)
 
     resp = TicketResponse(
-        ticketUid=ticket.ticket_uuid,
+        ticketUid=ticket.ticket_uid,
         flightNumber=ticket.flight_number,
         fromAirport=flight.fromAirport,
         toAirport=flight.toAirport,
@@ -124,11 +124,11 @@ def buy_ticket(
 ) -> TicketPurchaseResponse | ValidationErrorResponse:
     flight = flights_service.get_flight_by_number(body.flightNumber)
     if flight is None:
-        return ValidationErrorResponse(message="Ошибка валидации данных")
+        return ValidationErrorResponse(message="Ошибка валидации данных", errors=[])
 
     priv = privileges_service.get_user_privelge(x_user_name)
     if priv is None:
-        return ValidationErrorResponse(message="Пользователь не существует")
+        return ValidationErrorResponse(message="Пользователь не существует", errors=[])
 
     now = datetime.now()
     ticket_uid = uuid.uuid4()
@@ -180,17 +180,16 @@ def buy_ticket(
     )
 
 
-@app.delete("/tickets/{ticket_uid}")
-def return_ticket(ticket_uid, x_user_name: str = Header()) -> None | ErrorResponse:
+@app.delete("/tickets/{ticket_uid}", status_code=204)
+def return_ticket(ticket_uid: uuid.UUID, x_user_name: str = Header()):
     ticket = tickets_service.get_ticket(ticket_uid)
     if ticket is None:
-        return ErrorResponse(message="Билет не существует")
+        return error_response("Билет не существует", 404)
     if ticket.username != x_user_name:
-        return ErrorResponse(message="Билет не принадлежит пользователю")
+        return error_response("Билет не принадлежит пользователю", 403)
     if ticket.status != "PAID":
-        return ErrorResponse(message="Билет не может быть отменен")
+        return error_response("Билет не может быть отменен", 400)
     if privileges_service.get_user_privelge_transaction(x_user_name, ticket_uid):
-        print("here")
         privileges_service.rollback_transaction(x_user_name, ticket_uid)
     tickets_service.delete_ticket(ticket_uid)
 
@@ -198,5 +197,22 @@ def return_ticket(ticket_uid, x_user_name: str = Header()) -> None | ErrorRespon
 @app.get("/privilege")
 def get_privilege(x_user_name: str = Header()) -> PrivilegeInfoResponse:
     a = privileges_service.get_user_privelge(x_user_name)
+    if a is None:
+        return error_response("Пользователь не сущесвует", 404)
     b = privileges_service.get_user_privelge_history(x_user_name)
-    return PrivilegeInfoResponse(balance=a.balance, status=a.status, history=b)
+    his = []
+    for it in b:
+        his.append(
+            BalanceHistory(
+                date=it.datetime,
+                ticketUid=it.ticket_uid,
+                balanceDiff=it.balance_diff,
+                operationType=it.operation_type,
+            )
+        )
+    return PrivilegeInfoResponse(balance=a.balance, status=a.status, history=his)
+
+
+@app.get("/manage/health", status_code=201)
+def health():
+    pass

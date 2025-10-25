@@ -28,12 +28,6 @@ services:
       - "8050:8050"
     depends_on:
       - postgres
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://bonus:8050/manage/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 5s
 
   flights:
     build:
@@ -50,12 +44,6 @@ services:
       - "8060:8060"
     depends_on:
       - postgres
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://flights:8060/manage/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 5s
 
   tickets:
     build:
@@ -72,12 +60,6 @@ services:
       - postgres
     ports:
       - "8070:8070"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://tickets:8070/manage/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 5s
 
   gateway:
     build:
@@ -90,14 +72,10 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
-        condition: service_started
-      flights:
-        condition: service_healthy
-      tickets:
-        condition: service_healthy
-      bonus:
-        condition: service_healthy
+      - postgres
+      - flights
+      - tickets
+      - bonus
 
 volumes:
   db-data:
